@@ -1,0 +1,5 @@
+examples/
+__pycache__/
+*.pyc
+score_local.py
+kaggle_metric.py
