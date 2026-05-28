@@ -161,26 +161,38 @@ docker build -t my-htr .
 
 ## How to Submit
 
-1. **Request an upload link** — email the organizers when you're ready. You'll receive a personal pre-signed URL (valid 48 hours).
+1. **Request upload credentials** — fill out the submission form. You'll receive personal AWS credentials by email (valid ~36 hours).
 
-2. **Save your Docker image**:
+2. **Install AWS CLI** (if you don't have it):
+   ```bash
+   pip install awscli   # or: brew install awscli
+   ```
+
+3. **Save your Docker image**:
    ```bash
    docker save my-htr | gzip > my-htr.tar.gz
    ```
 
-3. **Upload**:
+4. **Upload** — paste the credentials block from the email and run:
    ```bash
-   UPLOAD_URL="https://..." ./submit.sh my-htr.tar.gz
+   export AWS_ACCESS_KEY_ID="..."
+   export AWS_SECRET_ACCESS_KEY="..."
+   export AWS_SESSION_TOKEN="..."
+
+   aws s3 cp my-htr.tar.gz s3://htr-hackathon-submissions/team-YOURNAME/submission.tar.gz
    ```
 
-   Or with curl directly:
+   Or use the helper script:
    ```bash
-   curl -X PUT -H "Content-Type: application/gzip" -T my-htr.tar.gz "$UPLOAD_URL"
+   S3_DEST="s3://htr-hackathon-submissions/team-YOURNAME/submission.tar.gz" \
+       ./submit.sh my-htr.tar.gz
    ```
 
-4. You can **re-upload** before the deadline — the latest upload wins.
+   The upload uses S3 multipart automatically — there is no size limit on a single PUT.
 
-If the URL expires, email the organizers for a new one.
+5. You can **re-upload** before the deadline — the latest upload wins.
+
+If the credentials expire, email the organizers for new ones.
 
 ---
 

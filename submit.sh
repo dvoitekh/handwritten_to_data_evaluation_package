@@ -3,15 +3,26 @@
 #  Upload your Docker image to the hackathon S3 bucket.
 #
 #  Usage:
-#    UPLOAD_URL="https://..." ./submit.sh my-htr.tar.gz
+#    export AWS_ACCESS_KEY_ID="..."
+#    export AWS_SECRET_ACCESS_KEY="..."
+#    export AWS_SESSION_TOKEN="..."
+#    S3_DEST="s3://bucket/team-name/submission.tar.gz" ./submit.sh my-htr.tar.gz
 #
-#  The UPLOAD_URL is a pre-signed S3 PUT URL — you'll receive
-#  it from the organizers after requesting a submission slot.
+#  The credentials and S3_DEST come from the organizers after you fill
+#  out the submission form. They are scoped to your team only and valid
+#  for ~36 hours.
+#
+#  This script uses `aws s3 cp` which performs multipart upload
+#  automatically (no size limit on individual files).
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
-    echo "Usage: UPLOAD_URL=\"https://...\" $0 <image.tar.gz>"
+    echo "Usage:"
+    echo "  export AWS_ACCESS_KEY_ID=\"...\""
+    echo "  export AWS_SECRET_ACCESS_KEY=\"...\""
+    echo "  export AWS_SESSION_TOKEN=\"...\""
+    echo "  S3_DEST=\"s3://bucket/team-X/submission.tar.gz\" $0 <image.tar.gz>"
     exit 1
 fi
 
@@ -22,12 +33,23 @@ if [[ ! -f "$FILE" ]]; then
     exit 1
 fi
 
-if [[ -z "${UPLOAD_URL:-}" ]]; then
-    echo "ERROR: UPLOAD_URL environment variable is not set."
-    echo ""
-    echo "Request your personal upload link from the organizers,"
-    echo "then run:"
-    echo "  UPLOAD_URL=\"https://...\" $0 $FILE"
+if [[ -z "${S3_DEST:-}" ]]; then
+    echo "ERROR: S3_DEST environment variable is not set."
+    echo "It should look like: s3://htr-hackathon-submissions/team-YOURNAME/submission.tar.gz"
+    echo "Get it from the upload email sent by the organizers."
+    exit 1
+fi
+
+if [[ -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" || -z "${AWS_SESSION_TOKEN:-}" ]]; then
+    echo "ERROR: AWS credentials are not set."
+    echo "Export AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_SESSION_TOKEN"
+    echo "from the email sent by the organizers, then re-run."
+    exit 1
+fi
+
+if ! command -v aws &>/dev/null; then
+    echo "ERROR: aws CLI not installed."
+    echo "Install with: pip install awscli   (or: brew install awscli)"
     exit 1
 fi
 
@@ -37,29 +59,21 @@ SIZE_GB=$(awk "BEGIN {printf \"%.2f\", $SIZE_BYTES / 1073741824}")
 echo "═══════════════════════════════════════════════════════════════"
 echo "  File : $FILE"
 echo "  Size : ${SIZE_GB} GB"
+echo "  Dest : $S3_DEST"
 echo "═══════════════════════════════════════════════════════════════"
+echo "Uploading (multipart)..."
 
-echo "Uploading..."
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-    -X PUT \
-    -H "Content-Type: application/gzip" \
-    -T "$FILE" \
-    "$UPLOAD_URL")
-
-echo ""
-if [[ "$HTTP_CODE" == "200" ]] || [[ "$HTTP_CODE" == "204" ]]; then
+if aws s3 cp "$FILE" "$S3_DEST"; then
+    echo ""
     echo "SUCCESS — uploaded ${SIZE_GB} GB"
     echo "You can re-upload before the deadline (latest upload wins)."
 else
-    echo "UPLOAD FAILED — HTTP $HTTP_CODE"
+    echo ""
+    echo "UPLOAD FAILED"
     echo ""
     echo "Common causes:"
-    echo "  403 — URL expired (request a new one from the organizers)"
-    echo "  400 — wrong Content-Type or file format"
-    echo "  413 — file too large"
-    echo ""
-    echo "If the issue persists, try uploading with aws CLI instead:"
-    echo "  aws s3 cp $FILE s3://BUCKET/team-YOURTEAM/submission.tar.gz"
-    echo "  (ask the organizers for the exact command)"
+    echo "  ExpiredToken — credentials expired (request new ones from organizers)"
+    echo "  AccessDenied — credentials don't match the S3_DEST (check both fields)"
+    echo "  NetworkError — connection issue, retry"
     exit 1
 fi
